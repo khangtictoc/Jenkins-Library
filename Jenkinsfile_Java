@@ -16,13 +16,24 @@ node(params.AGENT_LABELS) {
                 ],
                 description: 'Select the Git repository to build'
             ),
-            extendedChoice(
+            activeChoice(
                 name: 'AGENT_LABELS',
-                type: 'PT_CHECKBOX',
-                value: 'General,Java,Docker,Linux',
-                defaultValue: 'General',
                 description: 'Select one or more agent labels',
-                multiSelectDelimiter: '&&'
+                filterable: false,
+                choiceType: 'PT_CHECKBOX',
+                script: [
+                    $class: 'GroovyScript',
+                    fallbackScript: [
+                        classpath: [],
+                        sandbox: true,
+                        script: 'return ["General"]'
+                    ],
+                    script: [
+                        classpath: [],
+                        sandbox: true,
+                        script: 'return ["General:selected", "Java", "Docker", "Linux"]'
+                    ]
+                ]
             ),
             booleanParam(
                 name: 'SKIP_UNIT_TESTS',
