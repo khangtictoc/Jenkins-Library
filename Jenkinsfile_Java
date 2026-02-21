@@ -96,18 +96,20 @@ node(params.AGENT_LABELS) {
     }
 
     stage('Unit Tests') {
-        if (!params.SKIP_UNIT_TESTS) {
-            echo 'Running unit tests inside Kaniko build stage...'
-            sh """
-                /kaniko/executor \
-                    --context="dir://${env.WORKSPACE}/app-source" \
-                    --dockerfile="${env.WORKSPACE}/app-source/Dockerfile" \
-                    --target=builder \
-                    --build-arg RUN_TESTS=true \
-                    --no-push
-            """
-        } else {
-            echo 'Unit tests skipped.'
+        container(name: 'kaniko') {
+            if (!params.SKIP_UNIT_TESTS) {
+                echo 'Running unit tests inside Kaniko build stage...'
+                sh """
+                    /kaniko/executor \
+                        --context="dir://${env.WORKSPACE}/app-source" \
+                        --dockerfile="${env.WORKSPACE}/app-source/Dockerfile" \
+                        --target=builder \
+                        --build-arg RUN_TESTS=true \
+                        --no-push
+                """
+            } else {
+                echo 'Unit tests skipped.'
+            }
         }
     }
 
