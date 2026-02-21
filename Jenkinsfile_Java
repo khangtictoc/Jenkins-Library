@@ -88,6 +88,10 @@ node(params.AGENT_LABELS) {
             rm -rf dockerfile-common
             git clone --single-branch ${dockerfileRepoUrl} dockerfile-common
             cp dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile app-source/Dockerfile
+            pwd
+            ls -al 
+            ls -al dockerfile-common
+            ls-al app-source
         """
     }
 
