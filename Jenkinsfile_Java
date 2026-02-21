@@ -92,54 +92,31 @@ node(params.AGENT_LABELS) {
 
     stage('Unit Tests') {
         if (!params.SKIP_UNIT_TESTS) {
-            echo 'Running unit tests inside Docker build stage...'
+            echo 'Running unit tests inside Kaniko build stage...'
             sh """
-                docker build \
-                    --target builder \
+                kaniko \
+                    --context=dir://app-source \
+                    --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
+                    --target=builder \
                     --build-arg RUN_TESTS=true \
-                    -f dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
-                    -t ${imageName}:test-${env.BUILD_NUMBER} \
-                    app-source
+                    --no-push \
+                    --destination=${imageName}:test-${env.BUILD_NUMBER}
             """
         } else {
             echo 'Unit tests skipped.'
         }
     }
 
-    stage('Build Docker Image') {
-        echo "Building Docker image: ${fullImage}"
+    stage('Build & Push Docker Image') {
+        echo "Building and pushing: ${fullImage}"
         sh """
-            docker build \
+            kaniko \
+                --context=dir://app-source \
+                --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
                 --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
                 --build-arg GIT_COMMIT=${gitCommit} \
-                -f dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
-                -t ${fullImage} \
-                -t ${imageName}:latest \
-                app-source
-        """
-    }
-
-    stage('Push to DockerHub') {
-        withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-credentials',
-            usernameVariable: 'DOCKERHUB_USER',
-            passwordVariable: 'DOCKERHUB_PASS'
-        )]) {
-            sh """
-                echo ${DOCKERHUB_PASS} | docker login -u ${DOCKERHUB_USER} --password-stdin
-                docker push ${fullImage}
-                docker push ${imageName}:latest
-            """
-        }
-    }
-
-    stage('Cleanup') {
-        echo 'Removing local Docker images and cloned repos...'
-        sh """
-            docker rmi ${fullImage} || true
-            docker rmi ${imageName}:latest || true
-            docker rmi ${imageName}:test-${env.BUILD_NUMBER} || true
-            rm -rf app-source dockerfile-common
+                --destination=${fullImage} \
+                --destination=${imageName}:latest
         """
     }
 
