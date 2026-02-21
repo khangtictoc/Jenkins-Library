@@ -87,6 +87,7 @@ node(params.AGENT_LABELS) {
         sh """
             rm -rf dockerfile-common
             git clone --single-branch ${dockerfileRepoUrl} dockerfile-common
+            cp dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile app-source/Dockerfile
         """
     }
 
@@ -96,7 +97,7 @@ node(params.AGENT_LABELS) {
             sh """
                 kaniko \
                     --context=dir://app-source \
-                    --dockerfile=../dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
+                    --dockerfile=Dockerfile \
                     --target=builder \
                     --build-arg RUN_TESTS=true \
                     --no-push \
