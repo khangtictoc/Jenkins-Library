@@ -1,0 +1,105 @@
+def extractServiceName(String gitUrl) {
+    return gitUrl.tokenize('/')[-1].replace('.git', '').toLowerCase()
+}
+
+node(params.AGENT_LABELS) {
+
+    properties([
+        parameters([
+            choice(
+                name: 'GIT_REPOSITORY',
+                choices: [
+                    'https://github.com/your-org/service-a.git',
+                    'https://github.com/your-org/service-b.git',
+                    'https://github.com/your-org/service-c.git',
+                    'https://gitlab.com/nab3735908/demo-project/java-service.git'
+                ],
+                description: 'Select the Git repository to build'
+            ),
+            extendedChoice(
+                name: 'AGENT_LABELS',
+                type: 'PT_CHECKBOX',
+                value: 'General,Java,Docker,Linux',
+                defaultValue: 'General',
+                description: 'Select one or more agent labels',
+                multiSelectDelimiter: '&&'
+            ),
+            booleanParam(
+                name: 'SKIP_UNIT_TESTS',
+                defaultValue: false,
+                description: 'Skip unit tests during build'
+            )
+        ])
+    ])
+
+    def dockerhubUsername = 'darkhero101'
+    def serviceName       = extractServiceName(params.GIT_REPOSITORY)
+    def imageName         = "${dockerhubUsername}/${serviceName}"
+    def gitCommit         = ''
+    def fullImage         = ''
+
+    stage('Checkout') {
+        echo "Cloning: ${params.GIT_REPOSITORY}"
+        git url: params.GIT_REPOSITORY, branch: 'main', credentialsId: 'github-credentials'
+        gitCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+        fullImage = "${imageName}:${env.BUILD_NUMBER}-${gitCommit}"
+        echo "Image will be tagged: ${fullImage}"
+    }
+
+    stage('Unit Tests') {
+        if (!params.SKIP_UNIT_TESTS) {
+            echo 'Running unit tests inside Docker build...'
+            sh """
+                docker build \
+                    --target builder \
+                    --build-arg RUN_TESTS=true \
+                    -t ${imageName}:test-${env.BUILD_NUMBER} \
+                    .
+            """
+        } else {
+            echo 'Unit tests skipped.'
+        }
+    }
+
+    stage('Build Docker Image') {
+        echo "Building Docker image: ${fullImage}"
+        sh """
+            docker build \
+                --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
+                --build-arg GIT_COMMIT=${gitCommit} \
+                -t ${fullImage} \
+                -t ${imageName}:latest \
+                .
+        """
+    }
+
+    stage('Push to DockerHub') {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-credentials',
+            usernameVariable: 'DOCKERHUB_USER',
+            passwordVariable: 'DOCKERHUB_PASS'
+        )]) {
+            sh """
+                echo ${DOCKERHUB_PASS} | docker login -u ${DOCKERHUB_USER} --password-stdin
+                docker push ${fullImage}
+                docker push ${imageName}:latest
+            """
+        }
+    }
+
+    stage('Cleanup') {
+        echo 'Removing local Docker images...'
+        sh """
+            docker rmi ${fullImage} || true
+            docker rmi ${imageName}:latest || true
+            docker rmi ${imageName}:test-${env.BUILD_NUMBER} || true
+        """
+    }
+
+    echo """
+    ✅ Build SUCCESS
+    Image : ${fullImage}
+    Repo  : ${params.GIT_REPOSITORY}
+    Tests : ${params.SKIP_UNIT_TESTS ? 'Skipped' : 'Passed'}
+    """
+}
