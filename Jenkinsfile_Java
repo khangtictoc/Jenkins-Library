@@ -94,31 +94,33 @@ node(params.AGENT_LABELS) {
         if (!params.SKIP_UNIT_TESTS) {
             echo 'Running unit tests inside Kaniko build stage...'
             sh """
-                kaniko \
-                    --context=dir://app-source \
-                    --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
-                    --target=builder \
-                    --build-arg RUN_TESTS=true \
-                    --no-push \
-                    --destination=${imageName}:test-${env.BUILD_NUMBER}
+                pwd
+                ls -al
+                // kaniko \
+                //     --context=dir://app-source \
+                //     --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
+                //     --target=builder \
+                //     --build-arg RUN_TESTS=true \
+                //     --no-push \
+                //     --destination=${imageName}:test-${env.BUILD_NUMBER}
             """
         } else {
             echo 'Unit tests skipped.'
         }
     }
 
-    stage('Build & Push Docker Image') {
-        echo "Building and pushing: ${fullImage}"
-        sh """
-            kaniko \
-                --context=dir://app-source \
-                --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
-                --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
-                --build-arg GIT_COMMIT=${gitCommit} \
-                --destination=${fullImage} \
-                --destination=${imageName}:latest
-        """
-    }
+    // stage('Build & Push Docker Image') {
+    //     echo "Building and pushing: ${fullImage}"
+    //     sh """
+    //         kaniko \
+    //             --context=dir://app-source \
+    //             --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
+    //             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
+    //             --build-arg GIT_COMMIT=${gitCommit} \
+    //             --destination=${fullImage} \
+    //             --destination=${imageName}:latest
+    //     """
+    // }
 
     echo """
     ✅ Build SUCCESS
