@@ -91,7 +91,7 @@ node(params.AGENT_LABELS) {
             pwd
             ls -al 
             ls -al dockerfile-common
-            ls-al app-source
+            ls -al app-source
         """
     }
 
