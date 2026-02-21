@@ -100,11 +100,12 @@ node(params.AGENT_LABELS) {
             echo 'Running unit tests inside Kaniko build stage...'
             sh """
                 kaniko \
-                    --context=dir://${env.WORKSPACE}/app-source \
-                    --dockerfile=${env.WORKSPACE}/app-source/Dockerfile \
+                    --context=dir://app-source \
+                    --dockerfile=Dockerfile \
                     --target=builder \
                     --build-arg RUN_TESTS=true \
-                    --no-push
+                    --no-push \
+                    --destination=${imageName}:test-${env.BUILD_NUMBER}
             """
         } else {
             echo 'Unit tests skipped.'
@@ -115,8 +116,8 @@ node(params.AGENT_LABELS) {
         echo "Building and pushing: ${fullImage}"
         sh """
             kaniko \
-                --context=dir://${env.WORKSPACE}/app-source \
-                --dockerfile=${env.WORKSPACE}/app-source/Dockerfile \
+                --context=dir://app-source \
+                --dockerfile=dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
                 --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
                 --build-arg GIT_COMMIT=${gitCommit} \
                 --destination=${fullImage} \
