@@ -97,14 +97,14 @@ node(params.AGENT_LABELS) {
 
     stage('Unit Tests') {
         if (!params.SKIP_UNIT_TESTS) {
-            echo 'Running unit tests inside Kaniko build stage...'
+            echo 'Running unit tests inside Buildah build stage...'
             sh """
-                kaniko \
-                    --context="dir://${env.WORKSPACE}/app-source" \
-                    --dockerfile="${env.WORKSPACE}/app-source/Dockerfile" \
+                buildah bud \
+                    --isolation=chroot \
                     --target=builder \
                     --build-arg RUN_TESTS=true \
-                    --no-push
+                    --file="${env.WORKSPACE}/app-source/Dockerfile" \
+                    "${env.WORKSPACE}/app-source"
             """
         } else {
             echo 'Unit tests skipped.'
@@ -113,15 +113,32 @@ node(params.AGENT_LABELS) {
 
     stage('Build & Push Docker Image') {
         echo "Building and pushing: ${fullImage}"
-        sh """
-            kaniko \
-                --context="dir://${env.WORKSPACE}/app-source" \
-                --dockerfile="${env.WORKSPACE}/app-source/Dockerfile" \
-                --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
-                --build-arg GIT_COMMIT=${gitCommit} \
-                --destination=${fullImage} \
-                --destination=${imageName}:latest
-        """
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-credentials',
+            usernameVariable: 'DOCKERHUB_USER',
+            passwordVariable: 'DOCKERHUB_PASS'
+        )]) {
+            sh """
+                buildah bud \
+                    --isolation=chroot \
+                    --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
+                    --build-arg GIT_COMMIT=${gitCommit} \
+                    --file="${env.WORKSPACE}/app-source/Dockerfile" \
+                    --tag=${fullImage} \
+                    --tag=${imageName}:latest \
+                    "${env.WORKSPACE}/app-source"
+
+                buildah push \
+                    --creds=${DOCKERHUB_USER}:${DOCKERHUB_PASS} \
+                    ${fullImage} \
+                    docker://${fullImage}
+
+                buildah push \
+                    --creds=${DOCKERHUB_USER}:${DOCKERHUB_PASS} \
+                    ${imageName}:latest \
+                    docker://${imageName}:latest
+            """
+        }
     }
 
     echo """
