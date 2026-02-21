@@ -35,6 +35,21 @@ node(params.AGENT_LABELS) {
                     ]
                 ]
             ),
+            choice(
+                name: 'BRANCH',
+                choices: ['dev', 'staging', 'production'],
+                description: 'Select branch to build'
+            ),
+            string(
+                name: 'BRANCH_OVERRIDE',
+                defaultValue: '',
+                description: 'Override branch (leave empty to use selected BRANCH above)'
+            ),
+            choice(
+                name: 'DOCKERFILE_FOLDER',
+                choices: ['java-service', 'jenkins-inbound-agent'],
+                description: 'Select folder containing the Dockerfile to use for build'
+            ),
             booleanParam(
                 name: 'SKIP_UNIT_TESTS',
                 defaultValue: false,
@@ -43,29 +58,48 @@ node(params.AGENT_LABELS) {
         ])
     ])
 
-    def dockerhubUsername = 'darkhero101'
-    def serviceName       = extractServiceName(params.GIT_REPOSITORY)
-    def imageName         = "${dockerhubUsername}/${serviceName}"
-    def gitCommit         = ''
-    def fullImage         = ''
+    def dockerhubUsername   = 'darkhero101'
+    def dockerfileRepoUrl   = 'https://github.com/khangtictoc/dockerfile-common.git'
+    def serviceName         = extractServiceName(params.GIT_REPOSITORY)
+    def imageName           = "${dockerhubUsername}/${serviceName}"
+    def targetBranch        = params.BRANCH_OVERRIDE?.trim() ? params.BRANCH_OVERRIDE.trim() : params.BRANCH
+    def gitCommit           = ''
+    def fullImage           = ''
 
-    stage('Checkout') {
-        echo "Cloning: ${params.GIT_REPOSITORY}"
-        git url: params.GIT_REPOSITORY, branch: 'main', credentialsId: 'github-credentials'
-        gitCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+    echo "Using branch: ${targetBranch}"
+    echo "Using Dockerfile from folder: ${params.DOCKERFILE_FOLDER}"
+
+    stage('Checkout - Application Source') {
+        echo "Cloning application repo: ${params.GIT_REPOSITORY} @ ${targetBranch}"
+        sh """
+            rm -rf app-source
+            git clone --branch ${targetBranch} --single-branch ${params.GIT_REPOSITORY} app-source
+        """
+        dir('app-source') {
+            gitCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+        }
         fullImage = "${imageName}:${env.BUILD_NUMBER}-${gitCommit}"
         echo "Image will be tagged: ${fullImage}"
     }
 
+    stage('Checkout - Dockerfile') {
+        echo "Cloning Dockerfile repo: ${dockerfileRepoUrl}"
+        sh """
+            rm -rf dockerfile-common
+            git clone --single-branch ${dockerfileRepoUrl} dockerfile-common
+        """
+    }
+
     stage('Unit Tests') {
         if (!params.SKIP_UNIT_TESTS) {
-            echo 'Running unit tests inside Docker build...'
+            echo 'Running unit tests inside Docker build stage...'
             sh """
                 docker build \
                     --target builder \
                     --build-arg RUN_TESTS=true \
+                    -f dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
                     -t ${imageName}:test-${env.BUILD_NUMBER} \
-                    .
+                    app-source
             """
         } else {
             echo 'Unit tests skipped.'
@@ -78,9 +112,10 @@ node(params.AGENT_LABELS) {
             docker build \
                 --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
                 --build-arg GIT_COMMIT=${gitCommit} \
+                -f dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile \
                 -t ${fullImage} \
                 -t ${imageName}:latest \
-                .
+                app-source
         """
     }
 
@@ -99,18 +134,21 @@ node(params.AGENT_LABELS) {
     }
 
     stage('Cleanup') {
-        echo 'Removing local Docker images...'
+        echo 'Removing local Docker images and cloned repos...'
         sh """
             docker rmi ${fullImage} || true
             docker rmi ${imageName}:latest || true
             docker rmi ${imageName}:test-${env.BUILD_NUMBER} || true
+            rm -rf app-source dockerfile-common
         """
     }
 
     echo """
     ✅ Build SUCCESS
-    Image : ${fullImage}
-    Repo  : ${params.GIT_REPOSITORY}
-    Tests : ${params.SKIP_UNIT_TESTS ? 'Skipped' : 'Passed'}
+    Image      : ${fullImage}
+    Repo       : ${params.GIT_REPOSITORY}
+    Branch     : ${targetBranch}
+    Dockerfile : dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile
+    Tests      : ${params.SKIP_UNIT_TESTS ? 'Skipped' : 'Passed'}
     """
 }
