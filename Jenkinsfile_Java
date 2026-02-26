@@ -66,6 +66,12 @@ node(params.AGENT_LABELS) {
     def gitCommit           = ''
     def fullImage           = ''
 
+    // Environment Variables
+    def AGENT_POD_NAME      = env.AGENT_POD_NAME
+    def AGENT_POD_NAMESPACE = env.AGENT_POD_NAMESPACE
+    def WORKSPACE           = env.WORKSPACE
+    def BUILD_NUMBER         = env.BUILD_NUMBER
+
     echo "Using branch: ${targetBranch}"
     echo "Using Dockerfile from folder: ${params.DOCKERFILE_FOLDER}"
 
@@ -78,7 +84,7 @@ node(params.AGENT_LABELS) {
         dir('app-source') {
             gitCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
         }
-        fullImage = "${imageName}:${env.BUILD_NUMBER}-${gitCommit}"
+        fullImage = "${imageName}:${BUILD_NUMBER}-${gitCommit}"
         echo "Image will be tagged: ${fullImage}"
     }
 
@@ -88,24 +94,25 @@ node(params.AGENT_LABELS) {
             rm -rf dockerfile-common
             git clone --single-branch ${dockerfileRepoUrl} dockerfile-common
             cp dockerfile-common/${params.DOCKERFILE_FOLDER}/Dockerfile app-source/Dockerfile
-            pwd
-            ls -al 
-            ls -al dockerfile-common
-            ls -al app-source
         """
     }
 
     stage('Unit Tests') {
         if (!params.SKIP_UNIT_TESTS) {
-            
-            echo 'Running unit tests inside Kaniko build stage...'
             sh """
-                /kaniko/executor \
-                    --context="dir://${env.WORKSPACE}/app-source" \
-                    --dockerfile="${env.WORKSPACE}/app-source/Dockerfile" \
-                    --target=builder \
-                    --build-arg RUN_TESTS=true \
-                    --no-push
+                echo "--- Triggering Kaniko build in sidecar ---"
+                echo "    Image : ${IMAGE_NAME}:${IMAGE_TAG}"
+                echo "    Image : ${IMAGE_NAME}:latest"
+
+                kubectl exec ${AGENT_POD_NAME} \
+                        -n ${AGENT_POD_NAMESPACE} \
+                        -c kaniko \
+                        -- /kaniko/executor \
+                            --context="dir://${WORKSPACE}/app-source" \
+                            --dockerfile="${WORKSPACE}/app-source/Dockerfile" \
+                            --target=builder \
+                            --build-arg RUN_TESTS=true \
+                            --no-push
             """
         } else {
             echo 'Unit tests skipped.'
@@ -115,13 +122,20 @@ node(params.AGENT_LABELS) {
     stage('Build & Push Docker Image') {
         echo "Building and pushing: ${fullImage}"
         sh """
-            /kaniko/executor \
-                --context="dir://${env.WORKSPACE}/app-source" \
-                --dockerfile="${env.WORKSPACE}/app-source/Dockerfile" \
-                --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \
-                --build-arg GIT_COMMIT=${gitCommit} \
-                --destination=${fullImage} \
-                --destination=${imageName}:latest
+                echo "--- Triggering Kaniko build in sidecar ---"
+                echo "    Image : ${IMAGE_NAME}:${IMAGE_TAG}"
+                echo "    Image : ${IMAGE_NAME}:latest"
+
+                kubectl exec ${AGENT_POD_NAME} \
+                    -n ${AGENT_POD_NAMESPACE} \
+                    -c kaniko \
+                    -- /kaniko/executor \
+                        --context="dir://${WORKSPACE}/app-source" \
+                        --dockerfile="${WORKSPACE}/app-source/Dockerfile" \
+                        --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+                        --build-arg GIT_COMMIT=${gitCommit} \
+                        --destination=${fullImage} \
+                        --destination=${imageName}:latest
         """
     }
 
