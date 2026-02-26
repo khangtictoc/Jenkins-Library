@@ -62,9 +62,10 @@ node(params.AGENT_LABELS) {
     def dockerfileRepoUrl   = 'https://github.com/khangtictoc/dockerfile-common.git'
     def serviceName         = extractServiceName(params.GIT_REPOSITORY)
     def imageName           = "${dockerhubUsername}/${serviceName}"
+    def imageTag            = "${params.BRANCH}-${BUILD_NUMBER}"
     def targetBranch        = params.BRANCH_OVERRIDE?.trim() ? params.BRANCH_OVERRIDE.trim() : params.BRANCH
     def gitCommit           = ''
-    def fullImage           = ''
+    def fullImage           = "${imageName}:${imageTag}"
 
     // Environment Variables
     def AGENT_POD_NAME      = env.AGENT_POD_NAME
@@ -72,11 +73,13 @@ node(params.AGENT_LABELS) {
     def WORKSPACE           = env.WORKSPACE
     def BUILD_NUMBER         = env.BUILD_NUMBER
 
-    echo "Using branch: ${targetBranch}"
-    echo "Using Dockerfile from folder: ${params.DOCKERFILE_FOLDER}"
-
     stage('Checkout - Application Source') {
-        echo "Cloning application repo: ${params.GIT_REPOSITORY} @ ${targetBranch}"
+        sh """
+            echo "--- Cloning Application Repository ---"
+            echo "    Repo: ${params.GIT_REPOSITORY}"
+            echo "    Branch: ${targetBranch}"
+        """
+        
         sh """
             rm -rf app-source
             git clone --branch ${targetBranch} --single-branch ${params.GIT_REPOSITORY} app-source
@@ -84,12 +87,16 @@ node(params.AGENT_LABELS) {
         dir('app-source') {
             gitCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
         }
-        fullImage = "${imageName}:${BUILD_NUMBER}-${gitCommit}"
-        echo "Image will be tagged: ${fullImage}"
     }
 
     stage('Checkout - Dockerfile') {
-        echo "Cloning Dockerfile repo: ${dockerfileRepoUrl}"
+        sh """
+            echo "--- Cloning Dockerfile Repository ---"
+            echo "    Repo: ${dockerfileRepoUrl}"
+            echo "    Folder: ${params.DOCKERFILE_FOLDER}"
+            echo "    Image will be tagged: ${fullImage}"
+        """
+
         sh """
             rm -rf dockerfile-common
             git clone --single-branch ${dockerfileRepoUrl} dockerfile-common
@@ -100,9 +107,9 @@ node(params.AGENT_LABELS) {
     stage('Unit Tests') {
         if (!params.SKIP_UNIT_TESTS) {
             sh """
-                echo "--- Triggering Kaniko build in sidecar ---"
-                echo "    Image : ${IMAGE_NAME}:${IMAGE_TAG}"
-                echo "    Image : ${IMAGE_NAME}:latest"
+                echo "--- Kaniko - Unit Tests ---"
+                echo
+                echo
 
                 kubectl exec ${AGENT_POD_NAME} \
                         -n ${AGENT_POD_NAMESPACE} \
@@ -122,20 +129,20 @@ node(params.AGENT_LABELS) {
     stage('Build & Push Docker Image') {
         echo "Building and pushing: ${fullImage}"
         sh """
-                echo "--- Triggering Kaniko build in sidecar ---"
-                echo "    Image : ${IMAGE_NAME}:${IMAGE_TAG}"
-                echo "    Image : ${IMAGE_NAME}:latest"
+            echo "--- Kaniko - Build & Push ---"
+            echo
+            echo
 
-                kubectl exec ${AGENT_POD_NAME} \
-                    -n ${AGENT_POD_NAMESPACE} \
-                    -c kaniko \
-                    -- /kaniko/executor \
-                        --context="dir://${WORKSPACE}/app-source" \
-                        --dockerfile="${WORKSPACE}/app-source/Dockerfile" \
-                        --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-                        --build-arg GIT_COMMIT=${gitCommit} \
-                        --destination=${fullImage} \
-                        --destination=${imageName}:latest
+            kubectl exec ${AGENT_POD_NAME} \
+                -n ${AGENT_POD_NAMESPACE} \
+                -c kaniko \
+                -- /kaniko/executor \
+                    --context="dir://${WORKSPACE}/app-source" \
+                    --dockerfile="${WORKSPACE}/app-source/Dockerfile" \
+                    --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+                    --build-arg GIT_COMMIT=${gitCommit} \
+                    --destination=${fullImage} \
+                    --destination=${imageName}:latest
         """
     }
 
