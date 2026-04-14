@@ -58,7 +58,7 @@ node(params.AGENT_LABELS) {
         ])
     ])
 
-    def dockerhubUsername   = 'darkhero101'
+    def dockerhubUsername   = 'khangtictoc'
     def dockerfileRepoUrl   = 'https://github.com/khangtictoc/dockerfile-common.git'
     def serviceName         = extractServiceName(params.GIT_REPOSITORY)
     def imageName           = "${dockerhubUsername}/${serviceName}"
